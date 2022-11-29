@@ -7,8 +7,8 @@ from torch.optim import Adam
 import torch.nn.functional as F
 
 
-train_df = pd.read_csv('C:\\team_project\\nsmc/ratings_train.txt', sep='\t')
-test_df = pd.read_csv('C:\\team_project\\nsmc/ratings_test.txt', sep='\t')
+train_df = pd.read_csv('D:\Paper_review\BERT\\nsmc\\nsmc/ratings_train.txt', sep='\t')
+test_df = pd.read_csv('D:\Paper_review\BERT\\nsmc\\nsmc/ratings_test.txt', sep='\t')
 
 train_df.dropna(inplace=True)
 test_df.dropna(inplace=True)
