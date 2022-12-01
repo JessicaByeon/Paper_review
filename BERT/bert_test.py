@@ -1,3 +1,6 @@
+# 네이버 영화 리뷰 corpus의 감성 이진분류(긍정/부정)
+
+
 import numpy as np
 import pandas as pd
 import torch
@@ -19,6 +22,7 @@ test_df = test_df.sample(frac=0.4, random_state=999)
 # print(train_df)
 # print(test_df)
 
+
 class NsmcDataset(Dataset):
     ''' Naver Sentiment Movie Corpus Dataset '''
     def __init__(self, df):
@@ -33,7 +37,7 @@ class NsmcDataset(Dataset):
         return text, label
 
 nsmc_train_dataset = NsmcDataset(train_df)
-train_loader = DataLoader(nsmc_train_dataset, batch_size=2, shuffle=True, num_workers=0)
+train_loader = DataLoader(nsmc_train_dataset, batch_size=3, shuffle=True, num_workers=0)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -49,6 +53,10 @@ epochs = 1
 total_loss = 0
 total_len = 0
 total_correct = 0
+
+
+import time
+start = time.time()
 
 
 model.train()
@@ -87,7 +95,7 @@ for epoch in range(epochs):
 model.eval()
 
 nsmc_eval_dataset = NsmcDataset(test_df)
-eval_loader = DataLoader(nsmc_eval_dataset, batch_size=2, shuffle=False, num_workers=0)
+eval_loader = DataLoader(nsmc_eval_dataset, batch_size=3, shuffle=False, num_workers=0)
 
 total_loss = 0
 total_len = 0
@@ -108,9 +116,16 @@ for text, label in eval_loader:
     total_len += len(labels)
 
 print('Test accuracy: ', total_correct / total_len)
+
+end = time.time()
+print("걸린시간 : ", f"{end - start: .5f} sec")
+
 # from multiprocessing import freeze_support
 # def run():
 #     torch.multiprocessing.freeze_support()
 #     print('loop')
 # if __name__ == '__main__':
 #     run()
+
+
+
