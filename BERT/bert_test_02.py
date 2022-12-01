@@ -1,19 +1,13 @@
-
-
-
-#==============================================================
+##################################################################################
 # 1. 환경설정
 
-# import tensorflow as tf
 import torch
 
 from transformers import BertTokenizer
 from transformers import BertForSequenceClassification, AdamW, BertConfig
 from transformers import get_linear_schedule_with_warmup
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-# from keras.preprocessing.sequence import pad_sequences
-# from pad_sequences import pad_sequences_multi
-from keras import preprocessing
+from keras_preprocessing.sequence import pad_sequences
 from sklearn.model_selection import train_test_split
 
 import pandas as pd
@@ -30,13 +24,15 @@ for i in range(n_devices):
     print(torch.cuda.get_device_name(i))
     
     
-#==============================================================    
+##################################################################################    
 # 2. 데이터셋 로드
 
 import csv
 import pandas as pd
 
+# 일상대화/연애대화 분류 모델 -- 일상 0, 이별(부정) 1, 사랑(긍정) 2
 # 11,876개의 한글 대화 문답 데이터(0,1,2 3가지 분류로 라벨링)
+# 라벨 1과 2는 모두 1로 통일시켜 일상/연애 이진분류로 변경
 chatbot_data = pd.read_csv('D:\Paper_review\BERT/ChatbotData.csv', encoding="utf-8")
 print(chatbot_data.shape) # (11823, 3)
 print(chatbot_data.head())
@@ -47,8 +43,9 @@ print(chatbot_data.head())
 # 3  3박4일 정도 놀러가고 싶다  여행은 언제나 좋죠.      0
 # 4          PPL 심하네   눈살이 찌푸려지죠.      0
 
-chatbot_data.loc[(chatbot_data['label'] == 2), 'label'] = 1  # 라벨 1과 2는 모두 1로 통일시켜 이진분류로 변경
+chatbot_data.loc[(chatbot_data['label'] == 2), 'label'] = 1  # 라벨 1과 2는 모두 1로 통일시켜 일상/연애 이진분류로 변경
 chatbot_data_shuffled = chatbot_data.sample(frac=1).reset_index(drop=True)
+
 # train data & test data
 train = chatbot_data_shuffled[:9000]
 test = chatbot_data_shuffled[9000:]
@@ -57,39 +54,33 @@ print(train.shape) # (9000, 3)
 print(test.shape)  # (2823, 3)
 
 
-#==============================================================
+##################################################################################
 # 3. train set 전처리
 
 # CLS, SEP 붙이기 (문장의 시작, 끝)
 sentences = ["[CLS] " + str(s) + " [SEP]" for s in train.Q]
-sentences[:5]
-labels = train['label'].values
-labels
+
+# sentences[:5]
+# labels = train['label'].values
+# print('label', labels.shape) # (9000,)
+
 import pandas as pd
 from transformers import BertTokenizer
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased", do_lower_case=False)
 result = tokenizer.tokenize('안녕하세요!')
-print(result)
+# print(result) # ['안', '##녕', '##하', '##세', '##요', '!']
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased', do_lower_case=False)
 tokenized_texts = [tokenizer.tokenize(s) for s in sentences]
-print(sentences[0])  # 토크나이징 전
-print(tokenized_texts[0]) # 토크나이징 후
+print(sentences[0]) # [CLS] 진짜 이별 [SEP] 토크나이징 전
+print(tokenized_texts[0]) # ['[CLS]', '진', '##짜', '이', '##별', '[SEP]'] 토크나이징 후
 MAX_LEN = 128 # 최대 시퀀스 길이 설정
 input_ids = [tokenizer.convert_tokens_to_ids(x) for x in tokenized_texts]
-input_ids = pad_sequences_multi(input_ids, padding='post',
-                                truncating='post', maxlen=MAX_LEN)
+input_ids = pad_sequences(input_ids, padding='post', dtype='long', truncating='post', maxlen=MAX_LEN)
+
+print(input_ids)
 
 
-# def pad_sequences_multi(sequences: List[List[List[Number]]],
-#                         padding: Optional[str] = 'pre',
-#                         truncating: Optional[str] = 'pre',
-#                         maxlen: Optional[int] = None,
-#                         value: Optional[List[Number]] = None
-#                         ) -> List[List[List[Number]]]:
-
-# tf keras pad_sequences 사용 시
-# input_ids = pad_sequences(input_ids, maxlen=MAX_LEN, dtype="long", truncating="post", padding="post")
 
 attention_masks = []
 
@@ -97,6 +88,15 @@ for seq in input_ids:
     seq_mask = [float(i>0) for i in seq]
     attention_masks.append(seq_mask)
 print(attention_masks[0])
+# [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+# 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+# 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+# 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+# 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+# 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
+# 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+
 train_inputs, validation_inputs, train_labels, validation_labels = train_test_split(input_ids,
                                                                                     labels, 
                                                                                     random_state=2000, 
@@ -122,14 +122,15 @@ validation_sampler = SequentialSampler(validation_data)
 validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=batch_size)
 
 
-#==============================================================
+##################################################################################
 # 4. test set 전처리
 
 # [CLS] + 문장 + [SEP]
-sentences = ["[CLS] " + str(sentence) + " [SEP]" for sentence in sentences]
+sentences = ["[CLS] " + str(sentence) + " [SEP]" for sentence in test.Q]
 
 # 라벨 데이터
 labels = test['label'].values
+print('test_label', labels.shape) # test_label (2823,)
 
 # Word 토크나이저 토큰화
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased', do_lower_case=False)
@@ -138,8 +139,7 @@ tokenized_texts = [tokenizer.tokenize(sent) for sent in sentences]
 # 시퀀스 설정 및 정수 인덱스 변환 & 패딩
 MAX_LEN = 128
 input_ids = [tokenizer.convert_tokens_to_ids(x) for x in tokenized_texts]
-input_ids = pad_sequences_multi(input_ids, padding='post',
-                                truncating='post', maxlen=MAX_LEN, dtype="long")
+input_ids = pad_sequences(input_ids, padding='post', truncating='post', maxlen=MAX_LEN, dtype="long")
 
 # tf keras pad_sequences 사용 시
 # input_ids = pad_sequences(input_ids, maxlen=MAX_LEN, dtype="long", truncating="post", padding="post")
@@ -154,7 +154,21 @@ for seq in input_ids:
 test_inputs = torch.tensor(input_ids)
 test_labels = torch.tensor(labels)
 test_masks = torch.tensor(attention_masks)
-
+print(validation_inputs.shape)
+print(validation_masks.shape)
+print(validation_labels.shape)
+# test
+# torch.Size([9000, 128])
+# torch.Size([9000, 128])
+# torch.Size([2823])
+# train
+# torch.Size([8100, 128])
+# torch.Size([8100, 128])
+# torch.Size([8100]
+# valid
+# torch.Size([900, 128])
+# torch.Size([900, 128])
+# torch.Size([900])
 # 배치 사이즈 설정 및 데이터 설정
 batch_size = 32
 test_data = TensorDataset(test_inputs, test_masks, test_labels)
@@ -162,7 +176,7 @@ test_sampler = RandomSampler(test_data)
 test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=batch_size)
 
 
-#==============================================================
+##################################################################################
 # 5. 모델 생성
 
 if torch.cuda.is_available():    
@@ -172,8 +186,10 @@ if torch.cuda.is_available():
 else:
     device = torch.device("cpu")
     print('No GPU available, using the CPU instead.')
+
 model = BertForSequenceClassification.from_pretrained("bert-base-multilingual-cased", num_labels=2)
 model.cuda()
+
 # 옵티마이저
 optimizer = AdamW(model.parameters(),
                   lr = 2e-5, # 학습률(learning rate)
@@ -192,11 +208,11 @@ scheduler = get_linear_schedule_with_warmup(optimizer,
                                             num_training_steps = total_steps)
 
 
-#==============================================================
+##################################################################################
 # 6. 모델 학습
 
 # 정확도 계산 함수
-def flat_accuracy(preds, labels):
+def accuracy(preds, labels):
     
     pred_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
@@ -212,6 +228,7 @@ def format_time(elapsed):
     
     # hh:mm:ss으로 형태 변경
     return str(datetime.timedelta(seconds=elapsed_rounded))
+
 #랜덤시드 고정
 seed_val = 42
 random.seed(seed_val)
@@ -329,7 +346,7 @@ for epoch_i in range(0, epochs):
         label_ids = b_labels.to('cpu').numpy()
         
         # 출력 로짓과 라벨을 비교하여 정확도 계산
-        tmp_eval_accuracy = flat_accuracy(logits, label_ids)
+        tmp_eval_accuracy = accuracy(logits, label_ids)
         eval_accuracy += tmp_eval_accuracy
         nb_eval_steps += 1
 
@@ -341,7 +358,7 @@ print("Training complete!")
 
 
 
-#==============================================================
+##################################################################################
 # 7. test set 평가
 
 #시작 시간 설정
@@ -382,7 +399,7 @@ for step, batch in enumerate(test_dataloader):
     label_ids = b_labels.to('cpu').numpy()
     
     # 출력 로짓과 라벨을 비교하여 정확도 계산
-    tmp_eval_accuracy = flat_accuracy(logits, label_ids)
+    tmp_eval_accuracy = accuracy(logits, label_ids)
     eval_accuracy += tmp_eval_accuracy
     nb_eval_steps += 1
 
@@ -390,8 +407,11 @@ print("")
 print("Accuracy: {0:.2f}".format(eval_accuracy/nb_eval_steps))
 print("Test took: {:}".format(format_time(time.time() - t0)))
 
+# Accuracy: 0.87
+# Test took: 0:00:10
 
-#==============================================================
+
+##################################################################################
 # 8. 새로운 문장 테스트
 
 # 입력 데이터 변환
@@ -407,12 +427,8 @@ def convert_input_data(sentences):
     input_ids = [tokenizer.convert_tokens_to_ids(x) for x in tokenized_texts]
     
     # 문장을 MAX_LEN 길이에 맞게 자르고, 모자란 부분을 패딩 0으로 채움
-    input_ids = pad_sequences_multi(input_ids, padding='post',
-                                    truncating='post', maxlen=MAX_LEN, dtype="long")
+    input_ids = pad_sequences(input_ids, padding='post', truncating='post', maxlen=MAX_LEN, dtype="long")
 
-    # tf keras pad_sequences 사용 시
-    # input_ids = pad_sequences(input_ids, maxlen=MAX_LEN, dtype="long", truncating="post", padding="post")
-    
     # 어텐션 마스크 초기화
     attention_masks = []
 
@@ -427,6 +443,8 @@ def convert_input_data(sentences):
     masks = torch.tensor(attention_masks)
 
     return inputs, masks
+
+
 # 문장 테스트
 def test_sentences(sentences):
 
@@ -454,25 +472,32 @@ def test_sentences(sentences):
     logits = logits.detach().cpu().numpy()
 
     return logits
+
+
+
+##### 기존 데이터셋에 있는 일상대화 문장 입력 후 테스트 #####
 logits = test_sentences(['더 나은 학교생활 하고 싶어'])
 print(logits)
-
 if np.argmax(logits) == 1 :
     print("연애 관련 대화")
 elif np.argmax(logits) == 0 :
     print("일상 대화")
-logits = test_sentences(['저녁 뭘 먹을지 추천해줘'])
 
+########## 새로운 문장 입력 후 테스트 ##########
+logits = test_sentences(['저녁 뭘 먹을지 추천해줘'])
 print(logits)
 if np.argmax(logits) == 1 :
     print("연애 관련 대화")
 elif np.argmax(logits) == 0 :
     print("일상 대화")
-logits = test_sentences(['여자친구한테 선물 뭘로 줄까?'])
 
+logits = test_sentences(['여자친구한테 선물 뭘로 줄까?'])
 print(logits)
 if np.argmax(logits) == 1 :
     print("연애 관련 대화")
 elif np.argmax(logits) == 0 :
     print("일상 대화")
     
+# 11,876개의 문답데이터 사용
+# epoch 4 기준 소요시간 약 7분
+# epoch 20 기준 소요시간 약 30분
